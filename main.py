@@ -32,6 +32,9 @@ while True:
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
+
+
+#přidani par mezer :)
 # Vyčištění paměti a zavření oken
 cap.release()
 cv2.destroyAllWindows()
