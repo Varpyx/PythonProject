@@ -1,40 +1,65 @@
 import cv2
+import mediapipe as mp
+from mediapipe.tasks.python import vision
+from mediapipe.tasks import python
 
-# 1. Načtení trénovaného modelu pro detekci obličejů (součást OpenCV)
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+POSE_CONNECTIONS = [
+    (11, 13), (13, 15),  # levá ruka
+    (12, 14), (14, 16),  # pravá ruka
+    (11, 12),            # ramena
 
-# 2. Připojení k webkameře (0 je obvykle výchozí kamera)
-cap = cv2.VideoCapture(0)
+    (11, 23), (12, 24),  # trup
+    (23, 24),            # boky
 
-print("Stiskni 'q' pro ukončení programu.")
+    (23, 25), (25, 27),  # levá noha
+    (24, 26), (26, 28),  # pravá noha
 
-while True:
-    # Čtení aktuálního snímku z kamery
-    ret, frame = cap.read()
-    if not ret:
-        break
+    (27, 31), (28, 32)   # chodidla
+]
 
-    # Převod do šedotónu (detekce funguje lépe a rychleji bez barev)
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+model_path = "pose_landmarker_full.task"
 
-    # 3. Samotná detekce obličejů
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+base_options = python.BaseOptions(model_asset_path=model_path)
+options = vision.PoseLandmarkerOptions(
+    base_options=base_options,
+    output_segmentation_masks=False
+)
 
-    # 4. Vykreslení obdélníku kolem každého nalezeného obličeje
-    for (x, y, w, h) in faces:
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
-        cv2.putText(frame, 'Oblicej', (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 0, 0), 2)
+cap = cv2.VideoCapture("squat.mp4")
 
-    # Zobrazení výsledného okna
-    cv2.imshow('Detekce obliceje v realnem case', frame)
+with vision.PoseLandmarker.create_from_options(options) as landmarker:
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-    # Ukončení při stisku klávesy 'q'
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
+        result = landmarker.detect(mp_image)
 
+        if result.pose_landmarks:
+            landmarks = result.pose_landmarks[0]
 
-#přidani par mezer :)
-# Vyčištění paměti a zavření oken
+            # Převod na pixely
+            points = []
+            for lm in landmarks:
+                x = int(lm.x * frame.shape[1])
+                y = int(lm.y * frame.shape[0])
+                points.append((x, y))
+
+            # 🔵 vykreslení bodů
+            for (x, y) in points:
+                cv2.circle(frame, (x, y), 3, (0, 255, 0), -1)
+
+            # 🔴 vykreslení spojení
+            for a, b in POSE_CONNECTIONS:
+                cv2.line(frame, points[a], points[b], (255, 0, 0), 2)
+
+        cv2.imshow("Pose", frame)
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
 cap.release()
 cv2.destroyAllWindows()
